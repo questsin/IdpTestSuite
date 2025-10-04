@@ -6,7 +6,7 @@
  */
 
 const nock = require('nock');
-const crypto = require('crypto');
+// crypto not required after refactor; removed
 
 class MockResourceServer {
   constructor(baseUrl = 'https://api.example.com') {
@@ -56,10 +56,10 @@ class MockResourceServer {
     methods.forEach(method => {
       const mockMethod = method.toLowerCase();
       
+      const serverInstance = this;
       this.scope[mockMethod](path)
-        .reply((uri, requestBody, callback) => {
-          // Extract Authorization header
-          const authHeader = this.scope.interceptors[0].headers?.authorization;
+        .reply(function (uri, requestBody, callback) { // function to access this.req
+          const authHeader = this.req.headers['authorization'];
           
           if (!authHeader) {
             return callback(null, [401, { 
@@ -87,7 +87,7 @@ class MockResourceServer {
           if (validateToken) {
             // In real implementation, this would call token introspection
             // or validate JWT signature. For testing, we simulate validation.
-            this._validateTokenViaIntrospection(token, authServerUrl, (err, tokenInfo) => {
+            serverInstance._validateTokenViaIntrospection(token, authServerUrl, (err, tokenInfo) => {
               if (err || !tokenInfo.active) {
                 return callback(null, [401, { 
                   error: 'invalid_token',
@@ -96,7 +96,7 @@ class MockResourceServer {
               }
 
               // Check required scope
-              if (requiredScope && !this._hasRequiredScope(tokenInfo.scope, requiredScope)) {
+              if (requiredScope && !serverInstance._hasRequiredScope(tokenInfo.scope, requiredScope)) {
                 return callback(null, [403, { 
                   error: 'insufficient_scope',
                   error_description: `Required scope: ${requiredScope}` 
@@ -104,12 +104,11 @@ class MockResourceServer {
               }
 
               // Return protected resource
-              const resource = this.resources.get(path);
+              const resource = serverInstance.resources.get(path);
               callback(null, [200, resource ? resource.data : { message: 'Access granted' }]);
             });
           } else {
-            // Skip token validation for testing
-            const resource = this.resources.get(path);
+            const resource = serverInstance.resources.get(path);
             callback(null, [200, resource ? resource.data : { message: 'Access granted' }]);
           }
         })
@@ -180,9 +179,8 @@ class MockResourceServer {
     const { requiredScope, responseData } = options;
 
     this.scope[mockMethod](path)
-      .reply((uri, requestBody, callback) => {
-        // Check authorization
-        const authHeader = this.scope.interceptors[0].headers?.authorization;
+      .reply(function (uri, requestBody, callback) {
+        const authHeader = this.req.headers['authorization'];
         
         if (!authHeader || !authHeader.startsWith('Bearer ')) {
           return callback(null, [401, { 
@@ -255,7 +253,7 @@ class MockResourceServer {
 
     this.scope
       .get(path)
-      .reply((uri, requestBody, callback) => {
+      .reply(function (uri, requestBody, callback) {
         requestCount++;
         
         const headers = {

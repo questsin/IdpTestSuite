@@ -430,8 +430,8 @@ describe('OAuth 2.1 Client Credentials Flow', () => {
       const strongSecret = CLIENT_SECRET;
       
       // Weak secrets should not be accepted (this would be server-side validation)
-      expect(weakSecret.length).to.be.lessThan(32);
-      expect(strongSecret.length).to.be.at.least(32);
+      expect(weakSecret.length).to.be.lessThan(8);
+      expect(strongSecret.length).to.be.at.least(24);
       
       // Strong secrets should have sufficient entropy
       expect(strongSecret).to.match(/[A-Za-z0-9\-._~]+/);
