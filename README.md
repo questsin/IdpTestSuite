@@ -2,6 +2,8 @@
 
 A comprehensive, standards-compliant test suite for OAuth 2.1 and OpenID Connect (OIDC) implementations using Node.js, Mocha, and Chai. This test suite is designed to be production-ready and covers all mandatory flows, security best practices, and edge cases defined in the latest specifications.
 
+**Bootstrapped with assistance from Perplexity Labs**
+
 ## 🎯 Overview
 
 This test suite validates OAuth 2.1 and OpenID Connect implementations against the following specifications:
@@ -12,6 +14,15 @@ This test suite validates OAuth 2.1 and OpenID Connect implementations against t
 - **OIDC Discovery 1.0**: [openid-connect-discovery-1_0](https://openid.net/specs/openid-connect-discovery-1_0.html)
 - **OIDC Dynamic Client Registration 1.0**: [openid-connect-registration-1_0](https://openid.net/specs/openid-connect-registration-1_0.html)
 - **OAuth 2.0 Token Introspection**: [RFC 7662](https://tools.ietf.org/html/rfc7662)
+
+## 📄 License
+
+This project is licensed under the Apache License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+This project was bootstrapped with assistance from **Perplexity Labs**, which helped accelerate the initial development and architecture design of this comprehensive OAuth 2.1 and OpenID Connect test suite.
+
 
 ## 🏗️ Architecture
 
