@@ -19,8 +19,11 @@ const TEST_CONFIG = {
   AUTH_SERVER_BASE_URL: 'https://auth.example.com',
   RESOURCE_SERVER_BASE_URL: 'https://api.example.com',
   CLIENT_ID: 'test-client-id',
-  CLIENT_SECRET: 'test-client-secret',
+  // Use a stronger default client secret for tests (>=32 chars)
+  CLIENT_SECRET: 'test-client-secret-abcdefghijklmnopqrstuvwxyz012345',
   REDIRECT_URI: 'https://client.example.com/callback',
+  // Use a stronger default client secret for tests (>=32 chars)
+  CLIENT_SECRET: 'test-client-secret-abcdefghijklmnopqrstuvwxyz012345',
   SCOPE: 'openid profile email',
   ISSUER: 'https://auth.example.com',
   AUDIENCE: 'test-api',
