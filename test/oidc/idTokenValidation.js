@@ -7,9 +7,10 @@
 
 const { expect } = require('chai');
 const nock = require('nock');
-const jwt = require('jsonwebtoken');
-const jwksClient = require('jwks-rsa');
+// jwt and jwksClient reserved for future real verification flows; currently not used in mock tests
 const MockAuthServer = require('../mocks/mockAuthServer');
+const { RESOLVED_CONFIG } = require('../setup');
+const { live, isOIDC } = require('../providerEnv');
 const { 
   createIdToken, 
   validateIdToken, 
@@ -18,21 +19,25 @@ const {
 } = require('../utils/tokenUtils');
 const { 
   generateNonce,
-  generateState 
+  // generateState (unused after refactor)
 } = require('../utils/cryptoUtils');
 
 describe('OpenID Connect ID Token Validation', () => {
   let mockAuthServer;
   let testKeyPair;
-  const ISSUER = 'https://auth.example.com';
-  const CLIENT_ID = 'test-client-id';
+  const ISSUER = RESOLVED_CONFIG.AUTH_SERVER_BASE_URL || 'https://auth.example.com';
+  const CLIENT_ID = RESOLVED_CONFIG.CLIENT_ID || 'test-client-id';
   const USER_SUB = 'user123';
 
+  before(function () {
+    if (!isOIDC() || live()) this.skip();
+  });
+
   beforeEach(async () => {
-    mockAuthServer = new MockAuthServer(ISSUER);
-    mockAuthServer.setupAll();
-    
-    // Generate test key pair for JWT signing
+    if (!live()) {
+      mockAuthServer = new MockAuthServer(ISSUER);
+      mockAuthServer.setupAll();
+    }
     const crypto = require('crypto');
     testKeyPair = crypto.generateKeyPairSync('rsa', {
       modulusLength: 2048,
@@ -42,7 +47,9 @@ describe('OpenID Connect ID Token Validation', () => {
   });
 
   afterEach(() => {
-    mockAuthServer.cleanup();
+    if (!live()) {
+      mockAuthServer && mockAuthServer.cleanup();
+    }
   });
 
   describe('ID Token Structure Validation', () => {
@@ -431,13 +438,14 @@ describe('OpenID Connect ID Token Validation', () => {
     it('should retrieve and use JWKS for ID Token verification', async () => {
       // Test validates JWKS-based signature verification
       
-      const jwksUri = `${ISSUER}/.well-known/jwks.json`;
+  // jwksUri variable omitted (not directly used in mock path assertions)
       const keyId = 'test-key-1';
       
       // Mock JWKS endpoint
-      nock(ISSUER)
-        .get('/.well-known/jwks.json')
-        .reply(200, {
+      if (!live()) {
+        nock(ISSUER)
+          .get('/.well-known/jwks.json')
+          .reply(200, {
           keys: [{
             kty: 'RSA',
             use: 'sig',
@@ -446,7 +454,8 @@ describe('OpenID Connect ID Token Validation', () => {
             n: 'test-modulus',
             e: 'AQAB'
           }]
-        });
+          });
+      }
       
       const idTokenPayload = {
         iss: ISSUER,
@@ -473,9 +482,10 @@ describe('OpenID Connect ID Token Validation', () => {
       const newKeyId = 'new-key-2';
       
       // First JWKS response with old key
-      nock(ISSUER)
-        .get('/.well-known/jwks.json')
-        .reply(200, {
+      if (!live()) {
+        nock(ISSUER)
+          .get('/.well-known/jwks.json')
+          .reply(200, {
           keys: [{
             kty: 'RSA',
             use: 'sig',
@@ -484,12 +494,14 @@ describe('OpenID Connect ID Token Validation', () => {
             n: 'old-modulus',
             e: 'AQAB'
           }]
-        });
+          });
+      }
       
       // Second JWKS response with both keys
-      nock(ISSUER)
-        .get('/.well-known/jwks.json')
-        .reply(200, {
+      if (!live()) {
+        nock(ISSUER)
+          .get('/.well-known/jwks.json')
+          .reply(200, {
           keys: [
             {
               kty: 'RSA',
@@ -508,7 +520,8 @@ describe('OpenID Connect ID Token Validation', () => {
               e: 'AQAB'
             }
           ]
-        });
+          });
+      }
       
       // Token signed with new key should be verifiable
       const idTokenPayload = {
@@ -533,9 +546,10 @@ describe('OpenID Connect ID Token Validation', () => {
       const knownKeyId = 'known-key-1';
       const unknownKeyId = 'unknown-key-999';
       
-      nock(ISSUER)
-        .get('/.well-known/jwks.json')
-        .reply(200, {
+      if (!live()) {
+        nock(ISSUER)
+          .get('/.well-known/jwks.json')
+          .reply(200, {
           keys: [{
             kty: 'RSA',
             use: 'sig',
@@ -544,7 +558,8 @@ describe('OpenID Connect ID Token Validation', () => {
             n: 'known-modulus',
             e: 'AQAB'
           }]
-        });
+          });
+      }
       
       const idTokenPayload = {
         iss: ISSUER,

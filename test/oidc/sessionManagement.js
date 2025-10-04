@@ -12,22 +12,32 @@ const { expect } = require('chai');
 const nock = require('nock');
 const MockAuthServer = require('../mocks/mockAuthServer');
 const { generateState, generateNonce } = require('../utils/cryptoUtils');
+const { RESOLVED_CONFIG } = require('../setup');
+const { live, isOIDC } = require('../providerEnv');
 
 describe('OIDC Session Management', () => {
   let mockAuthServer;
-  const ISSUER = 'https://auth.example.com';
-  const CLIENT_ID = 'test-client-id';
-  const REDIRECT_URI = 'https://client.example.com/callback';
+  const ISSUER = RESOLVED_CONFIG.AUTH_SERVER_BASE_URL || 'https://auth.example.com';
+  const CLIENT_ID = RESOLVED_CONFIG.CLIENT_ID || 'test-client-id';
+  const REDIRECT_URI = RESOLVED_CONFIG.REDIRECT_URI || 'https://client.example.com/callback';
   const CHECK_SESSION_IFRAME = `${ISSUER}/check_session`;
   const END_SESSION_ENDPOINT = `${ISSUER}/logout`;
 
+  before(function () {
+    if (!isOIDC() || live()) this.skip();
+  });
+
   beforeEach(() => {
-    mockAuthServer = new MockAuthServer(ISSUER);
-    mockAuthServer.setupAll();
+    if (!live()) {
+      mockAuthServer = new MockAuthServer(ISSUER);
+      mockAuthServer.setupAll();
+    }
   });
 
   afterEach(() => {
-    mockAuthServer.cleanup();
+    if (!live()) {
+      mockAuthServer && mockAuthServer.cleanup();
+    }
   });
 
   describe('Session State Parameter', () => {
@@ -36,12 +46,14 @@ describe('OIDC Session Management', () => {
       const nonce = generateNonce();
 
       // Simulate authorization response
-      nock(ISSUER)
-        .get('/authorize')
-        .query(true)
-        .reply(302, '', {
-          Location: `${REDIRECT_URI}?code=testcode&state=${state}&session_state=test-session-state-123`
-        });
+      if (!live()) {
+        nock(ISSUER)
+          .get('/authorize')
+          .query(true)
+          .reply(302, '', {
+            Location: `${REDIRECT_URI}?code=testcode&state=${state}&session_state=test-session-state-123`
+          });
+      }
 
       const response = await fetch(`${ISSUER}/authorize?response_type=code&client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&state=${state}&nonce=${nonce}`)
         .catch(() => ({ status: 302, headers: { get: () => `code=testcode&state=${state}&session_state=test-session-state-123` } }));
@@ -59,11 +71,13 @@ describe('OIDC Session Management', () => {
     });
 
     it('should handle valid check_session_iframe GET', async () => {
-      nock(ISSUER)
-        .get('/check_session')
-        .reply(200, `<html><body>Check Session Iframe (mock)</body></html>`, {
-          'Content-Type': 'text/html'
-        });
+      if (!live()) {
+        nock(ISSUER)
+          .get('/check_session')
+          .reply(200, `<html><body>Check Session Iframe (mock)</body></html>`, {
+            'Content-Type': 'text/html'
+          });
+      }
 
       const response = await fetch(CHECK_SESSION_IFRAME).catch(() => ({
         status: 200,
@@ -78,12 +92,14 @@ describe('OIDC Session Management', () => {
 
   describe('Single Logout (Front-Channel)', () => {
     it('should support front-channel logout via end_session_endpoint', async () => {
-      nock(ISSUER)
-        .get('/logout')
-        .query(true)
-        .reply(302, '', {
-          Location: `${REDIRECT_URI}?post_logout_redirect=true`
-        });
+      if (!live()) {
+        nock(ISSUER)
+          .get('/logout')
+          .query(true)
+          .reply(302, '', {
+            Location: `${REDIRECT_URI}?post_logout_redirect=true`
+          });
+      }
 
       const response = await fetch(`${END_SESSION_ENDPOINT}?id_token_hint=mockToken&post_logout_redirect_uri=${encodeURIComponent(REDIRECT_URI)}`)
         .catch(() => ({ status: 302, headers: { get: () => `${REDIRECT_URI}?post_logout_redirect=true` } }));
@@ -94,13 +110,15 @@ describe('OIDC Session Management', () => {
     });
 
     it('should require id_token_hint for logout', async () => {
-      nock(END_SESSION_ENDPOINT)
-        .get('')
-        .query(true)
-        .reply(400, {
-          error: 'invalid_request',
-          error_description: 'id_token_hint is required'
-        });
+      if (!live()) {
+        nock(END_SESSION_ENDPOINT)
+          .get('')
+          .query(true)
+          .reply(400, {
+            error: 'invalid_request',
+            error_description: 'id_token_hint is required'
+          });
+      }
 
       const response = await fetch(`${END_SESSION_ENDPOINT}?post_logout_redirect_uri=${encodeURIComponent(REDIRECT_URI)}`)
         .catch(() => ({ status: 400, json: () => ({ error: 'invalid_request' }) }));
@@ -113,9 +131,11 @@ describe('OIDC Session Management', () => {
 
   describe('Session Expiry', () => {
     it('should indicate expired session via check_session_iframe', async () => {
-      nock(CHECK_SESSION_IFRAME)
-        .get('')
-        .reply(200, `<html><body>Session Expired</body></html>`);
+      if (!live()) {
+        nock(CHECK_SESSION_IFRAME)
+          .get('')
+          .reply(200, `<html><body>Session Expired</body></html>`);
+      }
 
       const response = await fetch(CHECK_SESSION_IFRAME).catch(() => ({
         status: 200,
@@ -135,13 +155,15 @@ describe('OIDC Session Management', () => {
     });
 
     it('should handle malformed requests gracefully', async () => {
-      nock(END_SESSION_ENDPOINT)
-        .get('')
-        .query(true)
-        .reply(400, {
-          error: 'invalid_request',
-          error_description: 'Malformed request'
-        });
+      if (!live()) {
+        nock(END_SESSION_ENDPOINT)
+          .get('')
+          .query(true)
+          .reply(400, {
+            error: 'invalid_request',
+            error_description: 'Malformed request'
+          });
+      }
 
       const response = await fetch(`${END_SESSION_ENDPOINT}?malformed=1`)
         .catch(() => ({ status: 400, json: () => ({ error: 'invalid_request' }) }));

@@ -11,20 +11,31 @@ const nock = require('nock');
 const MockAuthServer = require('../mocks/mockAuthServer');
 const { generateCodeVerifier, generateCodeChallenge, generateState, generateNonce } = require('../utils/cryptoUtils');
 const { validateIdToken } = require('../utils/tokenUtils');
+const { RESOLVED_CONFIG } = require('../setup');
+const { live, isOIDC } = require('../providerEnv');
 
 describe('OIDC Authorization Code Flow with PKCE', () => {
   let mockAuthServer;
-  const ISSUER = 'https://auth.example.com';
-  const CLIENT_ID = 'test-client-id';
-  const REDIRECT_URI = 'https://client.example.com/callback';
+  const ISSUER = RESOLVED_CONFIG.AUTH_SERVER_BASE_URL || 'https://auth.example.com';
+  const CLIENT_ID = RESOLVED_CONFIG.CLIENT_ID || 'test-client-id';
+  const REDIRECT_URI = RESOLVED_CONFIG.REDIRECT_URI || 'https://client.example.com/callback';
+
+  before(function () {
+    // Skip entirely if provider not OIDC or in live mode (needs real interactive auth)
+    if (!isOIDC() || live()) this.skip();
+  });
 
   beforeEach(() => {
-    mockAuthServer = new MockAuthServer(ISSUER);
-    mockAuthServer.setupAll();
+    if (!live()) {
+      mockAuthServer = new MockAuthServer(ISSUER);
+      mockAuthServer.setupAll();
+    }
   });
 
   afterEach(() => {
-    mockAuthServer.cleanup();
+    if (!live()) {
+      mockAuthServer && mockAuthServer.cleanup();
+    }
   });
 
   describe('Success', () => {
@@ -45,7 +56,7 @@ describe('OIDC Authorization Code Flow with PKCE', () => {
       authUrl.searchParams.set('code_challenge', codeChallenge);
       authUrl.searchParams.set('code_challenge_method', 'S256');
 
-      const response = await fetch(authUrl).catch(() => ({ status: 302, headers: { get: () => `${REDIRECT_URI}?code=testauthcode&state=${state}` } }));
+  const response = await fetch(authUrl).catch(() => ({ status: 302, headers: { get: () => `${REDIRECT_URI}?code=testauthcode&state=${state}` } }));
       expect(response.status).to.equal(302);
 
       // Simulate token exchange
@@ -92,15 +103,17 @@ describe('OIDC Authorization Code Flow with PKCE', () => {
       const codeVerifier = generateCodeVerifier();
       const wrongCodeVerifier = generateCodeVerifier();
 
-      nock(ISSUER)
-        .post('/token')
-        .reply((uri, requestBody) => {
+      if (!live()) {
+        nock(ISSUER)
+          .post('/token')
+          .reply((uri, requestBody) => {
           const params = new URLSearchParams(requestBody);
           if (params.get('code_verifier') !== codeVerifier) {
             return [400, { error: 'invalid_grant', error_description: 'PKCE verification failed' }];
           }
           return [200, {}];
-        });
+          });
+      }
 
       const response = await fetch(`${ISSUER}/token`, {
         method: 'POST',
@@ -122,10 +135,12 @@ describe('OIDC Authorization Code Flow with PKCE', () => {
       const codeChallenge = generateCodeChallenge(codeVerifier, 'S256');
       const state = generateState();
 
-      nock(ISSUER)
-        .get('/authorize')
-        .query(true)
-        .reply(400, { error: 'invalid_request', error_description: 'Invalid redirect_uri' });
+      if (!live()) {
+        nock(ISSUER)
+          .get('/authorize')
+          .query(true)
+          .reply(400, { error: 'invalid_request', error_description: 'Invalid redirect_uri' });
+      }
 
       const authUrl = `${ISSUER}/authorize?response_type=code&client_id=${CLIENT_ID}&redirect_uri=https://attacker.com/callback&state=${state}&code_challenge=${codeChallenge}&code_challenge_method=S256`;
       const response = await fetch(authUrl).catch(() => ({ status: 400 }));
@@ -137,10 +152,12 @@ describe('OIDC Authorization Code Flow with PKCE', () => {
       const codeVerifier = generateCodeVerifier();
       const codeChallenge = generateCodeChallenge(codeVerifier, 'S256');
 
-      nock(ISSUER)
-        .get('/authorize')
-        .query(true)
-        .reply(400, { error: 'invalid_request', error_description: 'state parameter required' });
+      if (!live()) {
+        nock(ISSUER)
+          .get('/authorize')
+          .query(true)
+          .reply(400, { error: 'invalid_request', error_description: 'state parameter required' });
+      }
 
       const authUrl = `${ISSUER}/authorize?response_type=code&client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&code_challenge=${codeChallenge}&code_challenge_method=S256`;
       const response = await fetch(authUrl).catch(() => ({ status: 400 }));

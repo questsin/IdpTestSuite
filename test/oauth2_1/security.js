@@ -8,36 +8,51 @@
 const { expect } = require('chai');
 const nock = require('nock');
 const MockAuthServer = require('../mocks/mockAuthServer');
-const { generateCodeVerifier, generateCodeChallenge, generateState } = require('../utils/cryptoUtils');
+// PKCE/state helpers not required in these negative tests after refactor
+const { RESOLVED_CONFIG } = require('../setup');
+const { live } = require('../providerEnv');
 
 describe('OAuth 2.1 & OIDC Security/Negative Testing', () => {
   let mockAuthServer;
-  const BASE_URL = 'https://auth.example.com';
+  const BASE_URL = RESOLVED_CONFIG.AUTH_SERVER_BASE_URL || 'https://auth.example.com';
+
+  // These security negative tests are mock-only; skip in live mode.
+  before(function () {
+    if (live()) this.skip();
+  });
 
   beforeEach(() => {
-    mockAuthServer = new MockAuthServer(BASE_URL);
-    mockAuthServer.setupAll();
+    if (!live()) {
+      mockAuthServer = new MockAuthServer(BASE_URL);
+      mockAuthServer.setupAll();
+    }
   });
 
   afterEach(() => {
-    mockAuthServer.cleanup();
+    if (!live()) {
+      mockAuthServer && mockAuthServer.cleanup();
+    }
   });
 
   describe('Missing/Malformed Parameters', () => {
     it('should reject missing required parameters on /authorize', async () => {
-      nock(BASE_URL)
-        .get('/authorize')
-        .query({}) // Empty query deliberately
-        .reply(400, { error: 'invalid_request' });
+      if (!live()) {
+        nock(BASE_URL)
+          .get('/authorize')
+          .query({}) // Empty query deliberately
+          .reply(400, { error: 'invalid_request' });
+      }
 
       const response = await fetch(`${BASE_URL}/authorize`).catch(() => ({ status: 400 }));
       expect(response.status).to.equal(400);
     });
 
     it('should reject missing grant_type on /token', async () => {
-      nock(BASE_URL)
-        .post('/token')
-        .reply(400, { error: 'invalid_request' });
+      if (!live()) {
+        nock(BASE_URL)
+          .post('/token')
+          .reply(400, { error: 'invalid_request' });
+      }
 
       const response = await fetch(`${BASE_URL}/token`, {
         method: 'POST',
@@ -48,9 +63,11 @@ describe('OAuth 2.1 & OIDC Security/Negative Testing', () => {
     });
 
     it('should reject requests with forged or unsupported grant_type', async () => {
-      nock(BASE_URL)
-        .post('/token')
-        .reply(400, { error: 'unsupported_grant_type' });
+      if (!live()) {
+        nock(BASE_URL)
+          .post('/token')
+          .reply(400, { error: 'unsupported_grant_type' });
+      }
 
       const response = await fetch(`${BASE_URL}/token`, {
         method: 'POST',
@@ -63,10 +80,12 @@ describe('OAuth 2.1 & OIDC Security/Negative Testing', () => {
 
   describe('Invalid/Malicious Values', () => {
     it('should reject authorization requests with manipulated state', async () => {
-      nock(BASE_URL)
-        .get('/authorize')
-        .query(true)
-        .reply(302, '', { Location: 'https://client/callback?code=x&state=forged' });
+      if (!live()) {
+        nock(BASE_URL)
+          .get('/authorize')
+          .query(true)
+          .reply(302, '', { Location: 'https://client/callback?code=x&state=forged' });
+      }
 
       // Simulate forged callback redirect: this would be checked in client, not server, but log and assert for security completeness
       // Here just asserting the Location header carries the parameter for integration with actual implementation
@@ -75,15 +94,17 @@ describe('OAuth 2.1 & OIDC Security/Negative Testing', () => {
     });
 
     it('should ignore extra/unknown parameters', async () => {
-      nock(BASE_URL)
-        .post('/token')
-        .reply((uri, body) => {
+      if (!live()) {
+        nock(BASE_URL)
+          .post('/token')
+          .reply((uri, body) => {
           const params = new URLSearchParams(body);
           if (params.get('extra_param')) {
             // Spec: Must ignore unknown params
             return [200, { access_token: 'x', token_type: 'Bearer', expires_in: 3600 }];
           }
-        });
+          });
+      }
 
       const r = await fetch(`${BASE_URL}/token`, {
         method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -94,14 +115,16 @@ describe('OAuth 2.1 & OIDC Security/Negative Testing', () => {
 
     it('should rate limit brute force attempts', async () => {
       let called = 0;
-      nock(BASE_URL)
-        .post('/token')
-        .times(11)
-        .reply(() => {
+      if (!live()) {
+        nock(BASE_URL)
+          .post('/token')
+          .times(11)
+          .reply(() => {
           called++;
           if (called > 10) return [429, { error: 'rate_limited' }];
           return [401, { error: 'invalid_client' }];
-        });
+          });
+      }
 
       for (let i = 0; i < 10; i++) {
         const res = await fetch(`${BASE_URL}/token`, {
@@ -123,9 +146,11 @@ describe('OAuth 2.1 & OIDC Security/Negative Testing', () => {
 
     it('should reject excessively large request bodies', async () => {
       const body = 'a='.repeat(1024 * 100); // 100kB payload, excessive for OAuth
-      nock(BASE_URL)
-        .post('/token')
-        .reply(413, { error: 'payload_too_large' });
+      if (!live()) {
+        nock(BASE_URL)
+          .post('/token')
+          .reply(413, { error: 'payload_too_large' });
+      }
 
       const res = await fetch(`${BASE_URL}/token`, {
         method: 'POST',
@@ -138,20 +163,24 @@ describe('OAuth 2.1 & OIDC Security/Negative Testing', () => {
 
   describe('Redirect URI Validation', () => {
     it('should enforce strict, case-sensitive redirect_uri matching', async () => {
-      nock(BASE_URL)
-        .get('/authorize')
-        .query(true)
-        .reply(400, { error: 'invalid_request' });
+      if (!live()) {
+        nock(BASE_URL)
+          .get('/authorize')
+          .query(true)
+          .reply(400, { error: 'invalid_request' });
+      }
 
       const res = await fetch(`${BASE_URL}/authorize?response_type=code&client_id=test-client-id&redirect_uri=HTTPS://CLIENT.EXAMPLE.COM/CALLBACK`);
       expect(res.status).to.equal(400);
     });
 
     it('should prevent open redirect vulnerabilities', async () => {
-      nock(BASE_URL)
-        .get('/authorize')
-        .query(true)
-        .reply(400, { error: 'invalid_request', error_description: 'unregistered redirect_uri' });
+      if (!live()) {
+        nock(BASE_URL)
+          .get('/authorize')
+          .query(true)
+          .reply(400, { error: 'invalid_request', error_description: 'unregistered redirect_uri' });
+      }
 
       const malicious = 'https://attacker/evil';
       const res = await fetch(`${BASE_URL}/authorize?response_type=code&client_id=test-client-id&redirect_uri=${encodeURIComponent(malicious)}`);
@@ -183,9 +212,11 @@ describe('OAuth 2.1 & OIDC Security/Negative Testing', () => {
 
   describe('Malformed JWT/token Handling', () => {
     it('should reject requests with malformed JWTs', async () => {
-      nock(BASE_URL)
-        .post('/introspect')
-        .reply(200, { active: false });
+      if (!live()) {
+        nock(BASE_URL)
+          .post('/introspect')
+          .reply(200, { active: false });
+      }
 
       const malformedJwt = 'eyFakeJwt...not.valid';
       const res = await fetch(`${BASE_URL}/introspect`, {
@@ -197,9 +228,11 @@ describe('OAuth 2.1 & OIDC Security/Negative Testing', () => {
     });
 
     it('should handle denial-of-service POST payloads', async () => {
-      nock(BASE_URL)
-        .post('/token')
-        .reply(413, { error: 'payload_too_large' });
+      if (!live()) {
+        nock(BASE_URL)
+          .post('/token')
+          .reply(413, { error: 'payload_too_large' });
+      }
 
       const body = 'b=' + 'B'.repeat(1024 * 1024 * 2); // 2MB
       const r = await fetch(`${BASE_URL}/token`, {

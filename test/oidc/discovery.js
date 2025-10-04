@@ -9,19 +9,29 @@
 const { expect } = require('chai');
 const nock = require('nock');
 const MockAuthServer = require('../mocks/mockAuthServer');
+const { RESOLVED_CONFIG } = require('../setup');
+const { live, isOIDC } = require('../providerEnv');
 
 describe('OpenID Connect Discovery 1.0', () => {
   let mockAuthServer;
-  const ISSUER = 'https://auth.example.com';
+  const ISSUER = RESOLVED_CONFIG.AUTH_SERVER_BASE_URL || 'https://auth.example.com';
   const DISCOVERY_URL = `${ISSUER}/.well-known/openid-configuration`;
 
+  before(function () {
+    if (!isOIDC() || live()) this.skip();
+  });
+
   beforeEach(() => {
-    mockAuthServer = new MockAuthServer(ISSUER);
-    mockAuthServer.setupAll();
+    if (!live()) {
+      mockAuthServer = new MockAuthServer(ISSUER);
+      mockAuthServer.setupAll();
+    }
   });
 
   afterEach(() => {
-    mockAuthServer.cleanup();
+    if (!live()) {
+      mockAuthServer && mockAuthServer.cleanup();
+    }
   });
 
   describe('OpenID Provider Configuration Retrieval', () => {
@@ -302,9 +312,10 @@ describe('OpenID Connect Discovery 1.0', () => {
     it('should include proper CORS headers', async () => {
       // Test validates CORS support for discovery endpoint
       
-      nock(ISSUER)
-        .get('/.well-known/openid-configuration')
-        .reply(200, {
+      if (!live()) {
+        nock(ISSUER)
+          .get('/.well-known/openid-configuration')
+          .reply(200, {
           issuer: ISSUER,
           authorization_endpoint: `${ISSUER}/authorize`,
           token_endpoint: `${ISSUER}/token`,
@@ -317,7 +328,8 @@ describe('OpenID Connect Discovery 1.0', () => {
           'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type',
           'Cache-Control': 'public, max-age=3600'
-        });
+          });
+      }
 
       const response = await fetch(DISCOVERY_URL).catch(() => ({
         status: 200,
@@ -339,9 +351,10 @@ describe('OpenID Connect Discovery 1.0', () => {
     it('should include proper caching headers', async () => {
       // Test validates caching headers for discovery endpoint
       
-      nock(ISSUER)
-        .get('/.well-known/openid-configuration')
-        .reply(200, {
+      if (!live()) {
+        nock(ISSUER)
+          .get('/.well-known/openid-configuration')
+          .reply(200, {
           issuer: ISSUER,
           authorization_endpoint: `${ISSUER}/authorize`,
           token_endpoint: `${ISSUER}/token`,
@@ -352,7 +365,8 @@ describe('OpenID Connect Discovery 1.0', () => {
         }, {
           'Cache-Control': 'public, max-age=3600',
           'ETag': '"discovery-v1"'
-        });
+          });
+      }
 
       const response = await fetch(DISCOVERY_URL).catch(() => ({
         status: 200,
@@ -417,12 +431,14 @@ describe('OpenID Connect Discovery 1.0', () => {
     it('should handle discovery endpoint errors gracefully', async () => {
       // Test validates error handling for discovery endpoint
       
-      nock(ISSUER)
-        .get('/.well-known/openid-configuration')
-        .reply(500, {
+      if (!live()) {
+        nock(ISSUER)
+          .get('/.well-known/openid-configuration')
+          .reply(500, {
           error: 'server_error',
           error_description: 'Internal server error'
-        });
+          });
+      }
 
       const response = await fetch(DISCOVERY_URL).catch(() => ({ status: 500 }));
       
@@ -454,13 +470,15 @@ describe('OpenID Connect Discovery 1.0', () => {
     it('should handle malformed discovery responses', async () => {
       // Test validates handling of malformed JSON responses
       
-      nock(ISSUER)
-        .get('/.well-known/openid-configuration')
-        .reply(200, 'invalid-json-content');
+      if (!live()) {
+        nock(ISSUER)
+          .get('/.well-known/openid-configuration')
+          .reply(200, 'invalid-json-content');
+      }
 
       try {
         const response = await fetch(DISCOVERY_URL);
-        const config = await response.json();
+  await response.json();
         // Should throw error for invalid JSON
         expect.fail('Should have thrown JSON parsing error');
       } catch (error) {

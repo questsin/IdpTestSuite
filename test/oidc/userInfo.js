@@ -8,37 +8,48 @@
 const { expect } = require('chai');
 const nock = require('nock');
 const MockAuthServer = require('../mocks/mockAuthServer');
-const { generateAccessToken } = require('../utils/tokenUtils');
+const { RESOLVED_CONFIG } = require('../setup');
+const { live, isOIDC } = require('../providerEnv');
 
 describe('OpenID Connect UserInfo Endpoint', () => {
   let mockAuthServer;
-  const AUTH_SERVER_URL = 'https://auth.example.com';
+  const AUTH_SERVER_URL = RESOLVED_CONFIG.AUTH_SERVER_BASE_URL || 'https://auth.example.com';
   const USERINFO_URL = `${AUTH_SERVER_URL}/userinfo`;
   const OPENID_TOKEN = 'valid-openid-token-123';
   const NO_OPENID_TOKEN = 'valid-no-openid-token-456';
   const EXPIRED_TOKEN = 'expired-token-789';
 
+  before(function () {
+    if (!isOIDC() || live()) this.skip();
+  });
+
   beforeEach(() => {
-    mockAuthServer = new MockAuthServer(AUTH_SERVER_URL);
-    mockAuthServer.setupAll();
+    if (!live()) {
+      mockAuthServer = new MockAuthServer(AUTH_SERVER_URL);
+      mockAuthServer.setupAll();
+    }
   });
 
   afterEach(() => {
-    mockAuthServer.cleanup();
+    if (!live()) {
+      mockAuthServer && mockAuthServer.cleanup();
+    }
   });
 
   describe('Successful UserInfo Requests', () => {
     it('should return user claims for valid token with openid scope', async () => {
       // Server returns claims for an access token with openid scope
-      nock(AUTH_SERVER_URL)
-        .get('/userinfo')
-        .matchHeader('authorization', `Bearer ${OPENID_TOKEN}`)
-        .reply(200, {
-          sub: 'user123',
-          name: 'Test User',
-          email: 'test@example.com',
-          email_verified: true
-        });
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
+          .get('/userinfo')
+          .matchHeader('authorization', `Bearer ${OPENID_TOKEN}`)
+          .reply(200, {
+            sub: 'user123',
+            name: 'Test User',
+            email: 'test@example.com',
+            email_verified: true
+          });
+      }
 
       const response = await fetch(USERINFO_URL, {
         method: 'GET',
@@ -53,15 +64,17 @@ describe('OpenID Connect UserInfo Endpoint', () => {
     });
 
     it('should return profile claims if profile scope present', async () => {
-      nock(AUTH_SERVER_URL)
-        .get('/userinfo')
-        .matchHeader('authorization', `Bearer ${OPENID_TOKEN}`)
-        .reply(200, {
-          sub: 'user123',
-          name: 'Test User',
-          given_name: 'Test',
-          family_name: 'User'
-        });
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
+          .get('/userinfo')
+          .matchHeader('authorization', `Bearer ${OPENID_TOKEN}`)
+          .reply(200, {
+            sub: 'user123',
+            name: 'Test User',
+            given_name: 'Test',
+            family_name: 'User'
+          });
+      }
 
       const response = await fetch(USERINFO_URL, {
         method: 'GET',
@@ -76,13 +89,15 @@ describe('OpenID Connect UserInfo Endpoint', () => {
 
   describe('Denied or Error Conditions', () => {
     it('should reject request if access token does not have openid scope', async () => {
-      nock(AUTH_SERVER_URL)
-        .get('/userinfo')
-        .matchHeader('authorization', `Bearer ${NO_OPENID_TOKEN}`)
-        .reply(401, {
-          error: 'insufficient_scope',
-          error_description: 'Token lacks required openid scope'
-        });
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
+          .get('/userinfo')
+          .matchHeader('authorization', `Bearer ${NO_OPENID_TOKEN}`)
+          .reply(401, {
+            error: 'insufficient_scope',
+            error_description: 'Token lacks required openid scope'
+          });
+      }
 
       const response = await fetch(USERINFO_URL, {
         method: 'GET',
@@ -95,13 +110,15 @@ describe('OpenID Connect UserInfo Endpoint', () => {
     });
 
     it('should reject request for expired access token', async () => {
-      nock(AUTH_SERVER_URL)
-        .get('/userinfo')
-        .matchHeader('authorization', `Bearer ${EXPIRED_TOKEN}`)
-        .reply(401, {
-          error: 'invalid_token',
-          error_description: 'Access token expired'
-        });
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
+          .get('/userinfo')
+          .matchHeader('authorization', `Bearer ${EXPIRED_TOKEN}`)
+          .reply(401, {
+            error: 'invalid_token',
+            error_description: 'Access token expired'
+          });
+      }
 
       const response = await fetch(USERINFO_URL, {
         method: 'GET',
@@ -114,12 +131,14 @@ describe('OpenID Connect UserInfo Endpoint', () => {
     });
 
     it('should reject requests with missing Authorization header', async () => {
-      nock(AUTH_SERVER_URL)
-        .get('/userinfo')
-        .reply(401, {
-          error: 'invalid_token',
-          error_description: 'Missing access token'
-        });
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
+          .get('/userinfo')
+          .reply(401, {
+            error: 'invalid_token',
+            error_description: 'Missing access token'
+          });
+      }
 
       const response = await fetch(USERINFO_URL, {
         method: 'GET'
@@ -131,13 +150,15 @@ describe('OpenID Connect UserInfo Endpoint', () => {
     });
 
     it('should handle malformed tokens gracefully', async () => {
-      nock(AUTH_SERVER_URL)
-        .get('/userinfo')
-        .matchHeader('authorization', 'Bearer malformed')
-        .reply(401, {
-          error: 'invalid_token',
-          error_description: 'The token provided is malformed'
-        });
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
+          .get('/userinfo')
+          .matchHeader('authorization', 'Bearer malformed')
+          .reply(401, {
+            error: 'invalid_token',
+            error_description: 'The token provided is malformed'
+          });
+      }
 
       const response = await fetch(USERINFO_URL, {
         method: 'GET',
@@ -157,13 +178,15 @@ describe('OpenID Connect UserInfo Endpoint', () => {
 
     it('should never allow tokens via query parameters', async () => {
       // Query parameters must not be used for tokens
-      nock(AUTH_SERVER_URL)
-        .get('/userinfo')
-        .query({ access_token: OPENID_TOKEN })
-        .reply(400, {
-          error: 'invalid_request',
-          error_description: 'Access tokens must not be sent in query string'
-        });
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
+          .get('/userinfo')
+          .query({ access_token: OPENID_TOKEN })
+          .reply(400, {
+            error: 'invalid_request',
+            error_description: 'Access tokens must not be sent in query string'
+          });
+      }
 
       const badUrl = `${USERINFO_URL}?access_token=${OPENID_TOKEN}`;
       const response = await fetch(badUrl, { method: 'GET' }).catch(() => ({ status: 400, json: () => ({}) }));

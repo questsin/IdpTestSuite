@@ -11,26 +11,36 @@ const nock = require('nock');
 const MockAuthServer = require('../mocks/mockAuthServer');
 const MockResourceServer = require('../mocks/mockResourceServer');
 const { createBasicAuthHeader } = require('../utils/cryptoUtils');
-const { createIntrospectionResponse } = require('../utils/tokenUtils');
+const { RESOLVED_CONFIG } = require('../setup');
+const { live } = require('../providerEnv');
 
 describe('OAuth 2.0 Token Introspection (RFC 7662)', () => {
   let mockAuthServer;
   let mockResourceServer;
-  const CLIENT_ID = 'resource-server-client';
-  const CLIENT_SECRET = 'resource-server-secret';
-  const AUTH_SERVER_URL = 'https://auth.example.com';
-  const RESOURCE_SERVER_URL = 'https://api.example.com';
+  const CLIENT_ID = RESOLVED_CONFIG.CLIENT_ID || 'resource-server-client';
+  const CLIENT_SECRET = RESOLVED_CONFIG.CLIENT_SECRET || 'resource-server-secret';
+  const AUTH_SERVER_URL = RESOLVED_CONFIG.AUTH_SERVER_BASE_URL || 'https://auth.example.com';
+  const RESOURCE_SERVER_URL = RESOLVED_CONFIG.RESOURCE_SERVER_BASE_URL || 'https://api.example.com';
+
+  // If running in live mode, skip entire introspection suite (provider-specific capability)
+  before(function () {
+    if (live()) this.skip();
+  });
 
   beforeEach(() => {
-    mockAuthServer = new MockAuthServer(AUTH_SERVER_URL);
-    mockResourceServer = new MockResourceServer(RESOURCE_SERVER_URL);
-    mockAuthServer.setupAll();
-    mockResourceServer.setupCommonEndpoints();
+    if (!live()) {
+      mockAuthServer = new MockAuthServer(AUTH_SERVER_URL);
+      mockResourceServer = new MockResourceServer(RESOURCE_SERVER_URL);
+      mockAuthServer.setupAll();
+      mockResourceServer.setupCommonEndpoints();
+    }
   });
 
   afterEach(() => {
-    mockAuthServer.cleanup();
-    mockResourceServer.cleanup();
+    if (!live()) {
+      mockAuthServer && mockAuthServer.cleanup();
+      mockResourceServer && mockResourceServer.cleanup();
+    }
   });
 
   describe('Active Token Introspection', () => {
@@ -49,9 +59,10 @@ describe('OAuth 2.0 Token Introspection (RFC 7662)', () => {
         sub: 'user123'
       };
       
-      nock(AUTH_SERVER_URL)
-        .post('/introspect')
-        .reply((uri, requestBody) => {
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
+          .post('/introspect')
+          .reply((uri, requestBody) => {
           const params = new URLSearchParams(requestBody);
           
           // Validate required parameters
@@ -59,7 +70,8 @@ describe('OAuth 2.0 Token Introspection (RFC 7662)', () => {
           expect(params.get('token_type_hint')).to.equal('access_token');
           
           return [200, expectedResponse];
-        });
+          });
+      }
 
       const introspectionResponse = await fetch(`${AUTH_SERVER_URL}/introspect`, {
         method: 'POST',
@@ -91,9 +103,10 @@ describe('OAuth 2.0 Token Introspection (RFC 7662)', () => {
       
       const refreshToken = 'active-refresh-token-456';
       
-      nock(AUTH_SERVER_URL)
-        .post('/introspect')
-        .reply((uri, requestBody) => {
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
+          .post('/introspect')
+          .reply((uri, requestBody) => {
           const params = new URLSearchParams(requestBody);
           
           expect(params.get('token')).to.equal(refreshToken);
@@ -105,7 +118,8 @@ describe('OAuth 2.0 Token Introspection (RFC 7662)', () => {
             token_type: 'refresh_token',
             scope: 'read write'
           }];
-        });
+          });
+      }
 
       const response = await fetch(`${AUTH_SERVER_URL}/introspect`, {
         method: 'POST',
@@ -153,9 +167,11 @@ describe('OAuth 2.0 Token Introspection (RFC 7662)', () => {
         jti: 'token-id-unique-123'
       };
       
-      nock(AUTH_SERVER_URL)
-        .post('/introspect')
-        .reply(200, fullResponse);
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
+          .post('/introspect')
+          .reply(200, fullResponse);
+      }
 
       const response = await fetch(`${AUTH_SERVER_URL}/introspect`, {
         method: 'POST',
@@ -194,15 +210,17 @@ describe('OAuth 2.0 Token Introspection (RFC 7662)', () => {
       
       const expiredToken = 'expired-token-abc';
       
-      nock(AUTH_SERVER_URL)
-        .post('/introspect')
-        .reply((uri, requestBody) => {
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
+          .post('/introspect')
+          .reply((uri, requestBody) => {
           const params = new URLSearchParams(requestBody);
           expect(params.get('token')).to.equal(expiredToken);
           
           // RFC 7662: For inactive tokens, only return minimal information
           return [200, { active: false }];
-        });
+          });
+      }
 
       const response = await fetch(`${AUTH_SERVER_URL}/introspect`, {
         method: 'POST',
@@ -232,9 +250,11 @@ describe('OAuth 2.0 Token Introspection (RFC 7662)', () => {
       
       const revokedToken = 'revoked-token-def';
       
-      nock(AUTH_SERVER_URL)
-        .post('/introspect')
-        .reply(200, { active: false });
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
+          .post('/introspect')
+          .reply(200, { active: false });
+      }
 
       const response = await fetch(`${AUTH_SERVER_URL}/introspect`, {
         method: 'POST',
@@ -259,9 +279,11 @@ describe('OAuth 2.0 Token Introspection (RFC 7662)', () => {
       
       const unknownToken = 'unknown-token-xyz';
       
-      nock(AUTH_SERVER_URL)
-        .post('/introspect')
-        .reply(200, { active: false });
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
+          .post('/introspect')
+          .reply(200, { active: false });
+      }
 
       const response = await fetch(`${AUTH_SERVER_URL}/introspect`, {
         method: 'POST',
@@ -286,9 +308,11 @@ describe('OAuth 2.0 Token Introspection (RFC 7662)', () => {
       
       const malformedToken = '!!!invalid-token-format!!!';
       
-      nock(AUTH_SERVER_URL)
-        .post('/introspect')
-        .reply(200, { active: false });
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
+          .post('/introspect')
+          .reply(200, { active: false });
+      }
 
       const response = await fetch(`${AUTH_SERVER_URL}/introspect`, {
         method: 'POST',
@@ -315,20 +339,20 @@ describe('OAuth 2.0 Token Introspection (RFC 7662)', () => {
       
       const token = 'some-token-123';
       
-      nock(AUTH_SERVER_URL)
-        .post('/introspect')
-        .reply((uri, requestBody, callback) => {
-          const headers = this.req.headers;
-          
-          if (!headers.authorization) {
-            return callback(null, [401, {
-              error: 'invalid_client',
-              error_description: 'Client authentication required'
-            }]);
-          }
-          
-          callback(null, [200, { active: true }]);
-        });
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
+          .post('/introspect')
+          .reply(function (_uri, _requestBody) { // use function to access this.req
+            const headers = this.req.headers;
+            if (!headers.authorization) {
+              return [401, {
+                error: 'invalid_client',
+                error_description: 'Client authentication required'
+              }];
+            }
+            return [200, { active: true }];
+          });
+      }
 
       const response = await fetch(`${AUTH_SERVER_URL}/introspect`, {
         method: 'POST',
@@ -350,10 +374,12 @@ describe('OAuth 2.0 Token Introspection (RFC 7662)', () => {
       const token = 'test-token-456';
       const authHeader = createBasicAuthHeader(CLIENT_ID, CLIENT_SECRET);
       
-      nock(AUTH_SERVER_URL)
-        .post('/introspect')
-        .matchHeader('authorization', authHeader)
-        .reply(200, { active: true });
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
+          .post('/introspect')
+          .matchHeader('authorization', authHeader)
+          .reply(200, { active: true });
+      }
 
       const response = await fetch(`${AUTH_SERVER_URL}/introspect`, {
         method: 'POST',
@@ -374,9 +400,10 @@ describe('OAuth 2.0 Token Introspection (RFC 7662)', () => {
       
       const token = 'test-token-789';
       
-      nock(AUTH_SERVER_URL)
-        .post('/introspect')
-        .reply((uri, requestBody) => {
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
+          .post('/introspect')
+          .reply((uri, requestBody) => {
           const params = new URLSearchParams(requestBody);
           
           if (params.get('client_id') === CLIENT_ID && 
@@ -385,7 +412,8 @@ describe('OAuth 2.0 Token Introspection (RFC 7662)', () => {
           }
           
           return [401, { error: 'invalid_client' }];
-        });
+          });
+      }
 
       const response = await fetch(`${AUTH_SERVER_URL}/introspect`, {
         method: 'POST',
@@ -408,13 +436,15 @@ describe('OAuth 2.0 Token Introspection (RFC 7662)', () => {
       const token = 'test-token-invalid-auth';
       const invalidAuthHeader = createBasicAuthHeader('invalid-client', 'invalid-secret');
       
-      nock(AUTH_SERVER_URL)
-        .post('/introspect')
-        .matchHeader('authorization', invalidAuthHeader)
-        .reply(401, {
-          error: 'invalid_client',
-          error_description: 'Client authentication failed'
-        });
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
+          .post('/introspect')
+          .matchHeader('authorization', invalidAuthHeader)
+          .reply(401, {
+            error: 'invalid_client',
+            error_description: 'Client authentication failed'
+          });
+      }
 
       const response = await fetch(`${AUTH_SERVER_URL}/introspect`, {
         method: 'POST',
@@ -437,9 +467,10 @@ describe('OAuth 2.0 Token Introspection (RFC 7662)', () => {
       
       const accessToken = 'access-token-hint-test';
       
-      nock(AUTH_SERVER_URL)
-        .post('/introspect')
-        .reply((uri, requestBody) => {
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
+          .post('/introspect')
+          .reply((uri, requestBody) => {
           const params = new URLSearchParams(requestBody);
           
           expect(params.get('token_type_hint')).to.equal('access_token');
@@ -448,7 +479,8 @@ describe('OAuth 2.0 Token Introspection (RFC 7662)', () => {
             active: true,
             token_type: 'Bearer'
           }];
-        });
+          });
+      }
 
       const response = await fetch(`${AUTH_SERVER_URL}/introspect`, {
         method: 'POST',
@@ -474,9 +506,10 @@ describe('OAuth 2.0 Token Introspection (RFC 7662)', () => {
       
       const refreshToken = 'refresh-token-hint-test';
       
-      nock(AUTH_SERVER_URL)
-        .post('/introspect')
-        .reply((uri, requestBody) => {
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
+          .post('/introspect')
+          .reply((uri, requestBody) => {
           const params = new URLSearchParams(requestBody);
           
           expect(params.get('token_type_hint')).to.equal('refresh_token');
@@ -485,7 +518,8 @@ describe('OAuth 2.0 Token Introspection (RFC 7662)', () => {
             active: true,
             token_type: 'refresh_token'
           }];
-        });
+          });
+      }
 
       const response = await fetch(`${AUTH_SERVER_URL}/introspect`, {
         method: 'POST',
@@ -511,16 +545,18 @@ describe('OAuth 2.0 Token Introspection (RFC 7662)', () => {
       
       const token = 'token-unknown-hint-test';
       
-      nock(AUTH_SERVER_URL)
-        .post('/introspect')
-        .reply((uri, requestBody) => {
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
+          .post('/introspect')
+          .reply((uri, requestBody) => {
           const params = new URLSearchParams(requestBody);
           
           expect(params.get('token_type_hint')).to.equal('unknown_token_type');
           
           // Should still process the token despite unknown hint
           return [200, { active: true }];
-        });
+          });
+      }
 
       const response = await fetch(`${AUTH_SERVER_URL}/introspect`, {
         method: 'POST',
@@ -545,9 +581,10 @@ describe('OAuth 2.0 Token Introspection (RFC 7662)', () => {
     it('should return error for missing token parameter', async () => {
       // Test validates that token parameter is required
       
-      nock(AUTH_SERVER_URL)
-        .post('/introspect')
-        .reply((uri, requestBody) => {
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
+          .post('/introspect')
+          .reply((uri, requestBody) => {
           const params = new URLSearchParams(requestBody);
           
           if (!params.get('token')) {
@@ -558,7 +595,8 @@ describe('OAuth 2.0 Token Introspection (RFC 7662)', () => {
           }
           
           return [200, { active: true }];
-        });
+          });
+      }
 
       const response = await fetch(`${AUTH_SERVER_URL}/introspect`, {
         method: 'POST',
@@ -578,12 +616,14 @@ describe('OAuth 2.0 Token Introspection (RFC 7662)', () => {
     it('should handle server errors gracefully', async () => {
       // Test validates server error handling
       
-      nock(AUTH_SERVER_URL)
-        .post('/introspect')
-        .reply(500, {
-          error: 'server_error',
-          error_description: 'Internal server error'
-        });
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
+          .post('/introspect')
+          .reply(500, {
+            error: 'server_error',
+            error_description: 'Internal server error'
+          });
+      }
 
       const response = await fetch(`${AUTH_SERVER_URL}/introspect`, {
         method: 'POST',
@@ -614,10 +654,11 @@ describe('OAuth 2.0 Token Introspection (RFC 7662)', () => {
       let requestCount = 0;
       const rateLimit = 100;
       
-      nock(AUTH_SERVER_URL)
-        .post('/introspect')
-        .times(rateLimit + 1)
-        .reply(() => {
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
+          .post('/introspect')
+          .times(rateLimit + 1)
+          .reply(() => {
           requestCount++;
           
           if (requestCount > rateLimit) {
@@ -628,7 +669,8 @@ describe('OAuth 2.0 Token Introspection (RFC 7662)', () => {
           }
           
           return [200, { active: true }];
-        });
+          });
+      }
 
       // Simulate multiple requests
       const promises = [];
@@ -653,13 +695,15 @@ describe('OAuth 2.0 Token Introspection (RFC 7662)', () => {
     it('should not leak sensitive information in error responses', async () => {
       // Test validates that error responses don't expose sensitive data
       
-      nock(AUTH_SERVER_URL)
-        .post('/introspect')
-        .reply(401, {
-          error: 'invalid_client',
-          error_description: 'Client authentication failed'
-          // Should not include sensitive details like valid client IDs
-        });
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
+          .post('/introspect')
+          .reply(401, {
+            error: 'invalid_client',
+            error_description: 'Client authentication failed'
+            // Should not include sensitive details like valid client IDs
+          });
+      }
 
       const response = await fetch(`${AUTH_SERVER_URL}/introspect`, {
         method: 'POST',

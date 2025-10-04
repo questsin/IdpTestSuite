@@ -8,22 +8,32 @@
 
 const { expect } = require('chai');
 const nock = require('nock');
-const crypto = require('crypto');
 const MockAuthServer = require('../mocks/mockAuthServer');
 const { generateClientCredentials } = require('../utils/cryptoUtils');
+const { RESOLVED_CONFIG } = require('../setup');
+const { live, isOIDC } = require('../providerEnv');
 
 describe('OpenID Connect Dynamic Client Registration', () => {
   let mockAuthServer;
-  const ISSUER = 'https://auth.example.com';
+  const ISSUER = RESOLVED_CONFIG.AUTH_SERVER_BASE_URL || 'https://auth.example.com';
   const REGISTRATION_ENDPOINT = `${ISSUER}/register`;
 
+  before(function () {
+    // Skip entire suite if not OIDC or in live mode (dynamic registration not generally enabled on public IdPs by default)
+    if (!isOIDC() || live()) this.skip();
+  });
+
   beforeEach(() => {
-    mockAuthServer = new MockAuthServer(ISSUER);
-    mockAuthServer.setupAll();
+    if (!live()) {
+      mockAuthServer = new MockAuthServer(ISSUER);
+      mockAuthServer.setupAll();
+    }
   });
 
   afterEach(() => {
-    mockAuthServer.cleanup();
+    if (!live()) {
+      mockAuthServer && mockAuthServer.cleanup();
+    }
   });
 
   describe('Open Dynamic Client Registration', () => {
@@ -47,9 +57,10 @@ describe('OpenID Connect Dynamic Client Registration', () => {
         ...clientMetadata
       };
 
-      nock(ISSUER)
-        .post('/register')
-        .reply((uri, requestBody) => {
+      if (!live()) {
+        nock(ISSUER)
+          .post('/register')
+          .reply((uri, requestBody) => {
           const metadata = JSON.parse(requestBody);
           
           // Validate required OIDC fields
@@ -59,7 +70,8 @@ describe('OpenID Connect Dynamic Client Registration', () => {
           expect(metadata.scope).to.include('openid');
           
           return [201, expectedResponse];
-        });
+          });
+      }
 
       const response = await fetch(REGISTRATION_ENDPOINT, {
         method: 'POST',
@@ -106,15 +118,17 @@ describe('OpenID Connect Dynamic Client Registration', () => {
         token_endpoint_auth_method: 'client_secret_basic'
       };
 
-      nock(ISSUER)
-        .post('/register')
-        .reply(201, {
+      if (!live()) {
+        nock(ISSUER)
+          .post('/register')
+          .reply(201, {
           client_id: 'comprehensive-client-123',
           client_secret: 'comprehensive-secret-456',
           client_id_issued_at: Math.floor(Date.now() / 1000),
           client_secret_expires_at: 0,
           ...comprehensiveMetadata
-        });
+          });
+      }
 
       const response = await fetch(REGISTRATION_ENDPOINT, {
         method: 'POST',
@@ -158,9 +172,10 @@ describe('OpenID Connect Dynamic Client Registration', () => {
         scope: 'openid profile'
       };
 
-      nock(ISSUER)
-        .post('/register')
-        .reply((uri, requestBody) => {
+      if (!live()) {
+        nock(ISSUER)
+          .post('/register')
+          .reply((uri, requestBody) => {
           const metadata = JSON.parse(requestBody);
           
           expect(metadata.application_type).to.equal('native');
@@ -172,7 +187,8 @@ describe('OpenID Connect Dynamic Client Registration', () => {
             client_id_issued_at: Math.floor(Date.now() / 1000),
             ...metadata
           }];
-        });
+          });
+      }
 
       const response = await fetch(REGISTRATION_ENDPOINT, {
         method: 'POST',
@@ -211,10 +227,11 @@ describe('OpenID Connect Dynamic Client Registration', () => {
         scope: 'openid profile email'
       };
 
-      nock(ISSUER)
-        .post('/register')
-        .matchHeader('authorization', `Bearer ${initialAccessToken}`)
-        .reply((uri, requestBody) => {
+      if (!live()) {
+        nock(ISSUER)
+          .post('/register')
+          .matchHeader('authorization', `Bearer ${initialAccessToken}`)
+          .reply((uri, requestBody) => {
           const metadata = JSON.parse(requestBody);
           
           return [201, {
@@ -226,7 +243,8 @@ describe('OpenID Connect Dynamic Client Registration', () => {
             registration_client_uri: `${ISSUER}/register/authenticated-client-456`,
             ...metadata
           }];
-        });
+          });
+      }
 
       const response = await fetch(REGISTRATION_ENDPOINT, {
         method: 'POST',
@@ -266,13 +284,15 @@ describe('OpenID Connect Dynamic Client Registration', () => {
         scope: 'openid'
       };
 
-      nock(ISSUER)
-        .post('/register')
-        .matchHeader('authorization', `Bearer ${invalidToken}`)
-        .reply(401, {
+      if (!live()) {
+        nock(ISSUER)
+          .post('/register')
+          .matchHeader('authorization', `Bearer ${invalidToken}`)
+          .reply(401, {
           error: 'invalid_token',
           error_description: 'Invalid initial access token'
-        });
+          });
+      }
 
       const response = await fetch(REGISTRATION_ENDPOINT, {
         method: 'POST',
@@ -301,12 +321,14 @@ describe('OpenID Connect Dynamic Client Registration', () => {
         scope: 'openid'
       };
 
-      nock(ISSUER)
-        .post('/register')
-        .reply(400, {
+      if (!live()) {
+        nock(ISSUER)
+          .post('/register')
+          .reply(400, {
           error: 'invalid_redirect_uri',
           error_description: 'redirect_uris must use HTTPS scheme'
-        });
+          });
+      }
 
       const response = await fetch(REGISTRATION_ENDPOINT, {
         method: 'POST',
@@ -330,12 +352,14 @@ describe('OpenID Connect Dynamic Client Registration', () => {
         scope: 'openid'
       };
 
-      nock(ISSUER)
-        .post('/register')
-        .reply(400, {
+      if (!live()) {
+        nock(ISSUER)
+          .post('/register')
+          .reply(400, {
           error: 'invalid_client_metadata',
           error_description: 'response_types and grant_types are incompatible'
-        });
+          });
+      }
 
       const response = await fetch(REGISTRATION_ENDPOINT, {
         method: 'POST',
@@ -359,12 +383,14 @@ describe('OpenID Connect Dynamic Client Registration', () => {
         scope: 'profile email' // Missing 'openid'
       };
 
-      nock(ISSUER)
-        .post('/register')
-        .reply(400, {
+      if (!live()) {
+        nock(ISSUER)
+          .post('/register')
+          .reply(400, {
           error: 'invalid_client_metadata',
           error_description: 'openid scope is required for OIDC clients'
-        });
+          });
+      }
 
       const response = await fetch(REGISTRATION_ENDPOINT, {
         method: 'POST',
@@ -387,12 +413,14 @@ describe('OpenID Connect Dynamic Client Registration', () => {
         scope: 'openid'
       };
 
-      nock(ISSUER)
-        .post('/register')
-        .reply(400, {
+      if (!live()) {
+        nock(ISSUER)
+          .post('/register')
+          .reply(400, {
           error: 'invalid_client_metadata',
           error_description: 'client_name is required'
-        });
+          });
+      }
 
       const response = await fetch(REGISTRATION_ENDPOINT, {
         method: 'POST',
@@ -424,10 +452,12 @@ describe('OpenID Connect Dynamic Client Registration', () => {
         scope: 'openid profile'
       };
 
-      nock(ISSUER)
-        .get(`/register/${clientId}`)
-        .matchHeader('authorization', `Bearer ${registrationAccessToken}`)
-        .reply(200, clientConfig);
+      if (!live()) {
+        nock(ISSUER)
+          .get(`/register/${clientId}`)
+          .matchHeader('authorization', `Bearer ${registrationAccessToken}`)
+          .reply(200, clientConfig);
+      }
 
       const response = await fetch(managementEndpoint, {
         method: 'GET',
@@ -462,14 +492,16 @@ describe('OpenID Connect Dynamic Client Registration', () => {
         scope: 'openid profile email'
       };
 
-      nock(ISSUER)
-        .put(`/register/${clientId}`)
-        .matchHeader('authorization', `Bearer ${registrationAccessToken}`)
-        .reply(200, {
+      if (!live()) {
+        nock(ISSUER)
+          .put(`/register/${clientId}`)
+          .matchHeader('authorization', `Bearer ${registrationAccessToken}`)
+          .reply(200, {
           client_id: clientId,
           client_secret: 'updated-secret-789',
           ...updatedMetadata
-        });
+          });
+      }
 
       const response = await fetch(managementEndpoint, {
         method: 'PUT',
@@ -499,10 +531,12 @@ describe('OpenID Connect Dynamic Client Registration', () => {
       const registrationAccessToken = 'delete-access-token-456';
       const managementEndpoint = `${ISSUER}/register/${clientId}`;
 
-      nock(ISSUER)
-        .delete(`/register/${clientId}`)
-        .matchHeader('authorization', `Bearer ${registrationAccessToken}`)
-        .reply(204);
+      if (!live()) {
+        nock(ISSUER)
+          .delete(`/register/${clientId}`)
+          .matchHeader('authorization', `Bearer ${registrationAccessToken}`)
+          .reply(204);
+      }
 
       const response = await fetch(managementEndpoint, {
         method: 'DELETE',
@@ -534,15 +568,17 @@ describe('OpenID Connect Dynamic Client Registration', () => {
 
       const mockCredentials = generateClientCredentials();
       
-      nock(ISSUER)
-        .post('/register')
-        .reply(201, {
+      if (!live()) {
+        nock(ISSUER)
+          .post('/register')
+          .reply(201, {
           client_id: mockCredentials.client_id,
           client_secret: mockCredentials.client_secret,
           client_id_issued_at: Math.floor(Date.now() / 1000),
           client_secret_expires_at: 0,
           ...clientMetadata
-        });
+          });
+      }
 
       const response = await fetch(REGISTRATION_ENDPOINT, {
         method: 'POST',
@@ -582,10 +618,11 @@ describe('OpenID Connect Dynamic Client Registration', () => {
         scope: 'openid'
       };
 
-      nock(ISSUER)
-        .post('/register')
-        .times(rateLimit + 1)
-        .reply(() => {
+      if (!live()) {
+        nock(ISSUER)
+          .post('/register')
+          .times(rateLimit + 1)
+          .reply(() => {
           requestCount++;
           
           if (requestCount > rateLimit) {
@@ -600,7 +637,8 @@ describe('OpenID Connect Dynamic Client Registration', () => {
             client_secret: `secret-${requestCount}`,
             ...clientMetadata
           }];
-        });
+          });
+      }
 
       // Make requests up to rate limit
       for (let i = 0; i < rateLimit; i++) {

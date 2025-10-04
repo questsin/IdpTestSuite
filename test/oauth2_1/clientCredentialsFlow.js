@@ -12,48 +12,53 @@ const MockAuthServer = require('../mocks/mockAuthServer');
 const MockResourceServer = require('../mocks/mockResourceServer');
 const { createBasicAuthHeader } = require('../utils/cryptoUtils');
 const { validateTokenResponse } = require('../utils/tokenUtils');
+const { RESOLVED_CONFIG } = require('../setup');
+const { live } = require('../providerEnv');
 
 describe('OAuth 2.1 Client Credentials Flow', () => {
   let mockAuthServer;
   let mockResourceServer;
-  const CLIENT_ID = 'test-confidential-client';
-  const CLIENT_SECRET = 'test-confidential-secret';
-  const AUTH_SERVER_URL = 'https://auth.example.com';
-  const RESOURCE_SERVER_URL = 'https://api.example.com';
+  // Use configured client values; allow overrides via env (e.g., OIDC_CLIENT_ID)
+  const CLIENT_ID = RESOLVED_CONFIG.CLIENT_ID || 'test-confidential-client';
+  const CLIENT_SECRET = RESOLVED_CONFIG.CLIENT_SECRET || 'test-confidential-secret';
+  const AUTH_SERVER_URL = RESOLVED_CONFIG.AUTH_SERVER_BASE_URL || 'https://auth.example.com';
+  const RESOURCE_SERVER_URL = RESOLVED_CONFIG.RESOURCE_SERVER_BASE_URL || 'https://api.example.com';
 
   beforeEach(() => {
-    mockAuthServer = new MockAuthServer(AUTH_SERVER_URL);
-    mockResourceServer = new MockResourceServer(RESOURCE_SERVER_URL);
-    mockAuthServer.setupAll();
-    mockResourceServer.setupCommonEndpoints();
+    if (!live()) {
+      mockAuthServer = new MockAuthServer(AUTH_SERVER_URL);
+      mockResourceServer = new MockResourceServer(RESOURCE_SERVER_URL);
+      mockAuthServer.setupAll();
+      mockResourceServer.setupCommonEndpoints();
+    }
   });
 
   afterEach(() => {
-    mockAuthServer.cleanup();
-    mockResourceServer.cleanup();
+    if (!live()) {
+      mockAuthServer && mockAuthServer.cleanup();
+      mockResourceServer && mockResourceServer.cleanup();
+    }
   });
 
   describe('Successful Client Credentials Grant', () => {
     it('should successfully obtain access token with client credentials', async () => {
       // Test validates client credentials grant for confidential clients
-      
-      nock(AUTH_SERVER_URL)
-        .post('/token')
-        .reply((uri, requestBody) => {
-          const params = new URLSearchParams(requestBody);
-          
-          // Validate required parameters
-          expect(params.get('grant_type')).to.equal('client_credentials');
-          expect(params.get('client_id')).to.equal(CLIENT_ID);
-          expect(params.get('client_secret')).to.equal(CLIENT_SECRET);
-          
-          return [200, {
-            access_token: 'client-credentials-token-123',
-            token_type: 'Bearer',
-            expires_in: 3600,
-            scope: 'api:read api:write'
-          }];
-        });
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
+          .post('/token')
+  .reply((_uri, requestBody) => {
+            const params = new URLSearchParams(requestBody);
+            expect(params.get('grant_type')).to.equal('client_credentials');
+            expect(params.get('client_id')).to.equal(CLIENT_ID);
+            expect(params.get('client_secret')).to.equal(CLIENT_SECRET);
+            return [200, {
+              access_token: 'client-credentials-token-123',
+              token_type: 'Bearer',
+              expires_in: 3600,
+              scope: 'api:read api:write'
+            }];
+          });
+      }
 
       const tokenResponse = await fetch(`${AUTH_SERVER_URL}/token`, {
         method: 'POST',
@@ -85,28 +90,26 @@ describe('OAuth 2.1 Client Credentials Flow', () => {
       expect(tokenData.scope).to.equal('api:read api:write');
     });
 
-    it('should support Basic authentication for client credentials', async () => {
+    it('should support Basic authentication for client credentials', async function () {
       // Test validates RFC 7617 Basic authentication method
-      
+      if (live()) this.skip(); // Live providers may enforce different auth styles
       const authHeader = createBasicAuthHeader(CLIENT_ID, CLIENT_SECRET);
-      
-      nock(AUTH_SERVER_URL)
-        .post('/token')
-        .matchHeader('authorization', authHeader)
-        .reply((uri, requestBody, callback) => {
-          const params = new URLSearchParams(requestBody);
-          
-          expect(params.get('grant_type')).to.equal('client_credentials');
-          // client_id and client_secret should be in Authorization header, not body
-          expect(params.get('client_id')).to.be.null;
-          expect(params.get('client_secret')).to.be.null;
-          
-          callback(null, [200, {
-            access_token: 'basic-auth-token-456',
-            token_type: 'Bearer',
-            expires_in: 3600
-          }]);
-        });
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
+          .post('/token')
+          .matchHeader('authorization', authHeader)
+          .reply((uri, requestBody, callback) => {
+            const params = new URLSearchParams(requestBody);
+            expect(params.get('grant_type')).to.equal('client_credentials');
+            expect(params.get('client_id')).to.be.null;
+            expect(params.get('client_secret')).to.be.null;
+            callback(null, [200, {
+              access_token: 'basic-auth-token-456',
+              token_type: 'Bearer',
+              expires_in: 3600
+            }]);
+          });
+      }
 
       const tokenResponse = await fetch(`${AUTH_SERVER_URL}/token`, {
         method: 'POST',
@@ -122,15 +125,16 @@ describe('OAuth 2.1 Client Credentials Flow', () => {
       expect(tokenResponse.status).to.equal(200);
     });
 
-    it('should properly scope client credentials tokens', async () => {
+    it('should properly scope client credentials tokens', async function () {
       // Test validates proper scoping for client credentials flow
+      if (live()) this.skip(); // Live server may not reduce scopes deterministically
       
       const requestedScope = 'api:admin api:read api:write';
       const grantedScope = 'api:read api:write'; // Server may reduce scope
-      
-      nock(AUTH_SERVER_URL)
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
         .post('/token')
-        .reply((uri, requestBody) => {
+  .reply((_uri, requestBody) => {
           const params = new URLSearchParams(requestBody);
           
           expect(params.get('scope')).to.equal(requestedScope);
@@ -142,6 +146,7 @@ describe('OAuth 2.1 Client Credentials Flow', () => {
             scope: grantedScope // Authorization server can reduce scope
           }];
         });
+      }
 
       const tokenResponse = await fetch(`${AUTH_SERVER_URL}/token`, {
         method: 'POST',
@@ -170,15 +175,17 @@ describe('OAuth 2.1 Client Credentials Flow', () => {
   });
 
   describe('Client Authentication Failures', () => {
-    it('should reject invalid client credentials', async () => {
+    it('should reject invalid client credentials', async function () {
       // Test validates client authentication failure handling
+      if (live()) this.skip(); // Avoid triggering real provider lockouts
       
       const invalidClientId = 'invalid-client';
       const invalidClientSecret = 'invalid-secret';
       
-      nock(AUTH_SERVER_URL)
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
         .post('/token')
-        .reply((uri, requestBody) => {
+  .reply((_uri, requestBody) => {
           const params = new URLSearchParams(requestBody);
           
           if (params.get('client_id') !== CLIENT_ID || 
@@ -191,6 +198,7 @@ describe('OAuth 2.1 Client Credentials Flow', () => {
           
           return [200, {}];
         });
+      }
 
       const tokenResponse = await fetch(`${AUTH_SERVER_URL}/token`, {
         method: 'POST',
@@ -207,12 +215,14 @@ describe('OAuth 2.1 Client Credentials Flow', () => {
       expect(tokenResponse.status).to.equal(401);
     });
 
-    it('should reject missing client credentials', async () => {
+    it('should reject missing client credentials', async function () {
       // Test validates that client credentials are required
+      if (live()) this.skip();
       
-      nock(AUTH_SERVER_URL)
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
         .post('/token')
-        .reply((uri, requestBody) => {
+  .reply((_uri, requestBody) => {
           const params = new URLSearchParams(requestBody);
           
           if (!params.get('client_id') || !params.get('client_secret')) {
@@ -224,6 +234,7 @@ describe('OAuth 2.1 Client Credentials Flow', () => {
           
           return [200, {}];
         });
+      }
 
       const tokenResponse = await fetch(`${AUTH_SERVER_URL}/token`, {
         method: 'POST',
@@ -239,14 +250,16 @@ describe('OAuth 2.1 Client Credentials Flow', () => {
       expect(tokenResponse.status).to.equal(400);
     });
 
-    it('should reject public clients attempting client credentials flow', async () => {
+    it('should reject public clients attempting client credentials flow', async function () {
       // Test validates that only confidential clients can use client credentials
+      if (live()) this.skip();
       
       const publicClientId = 'public-client-spa';
       
-      nock(AUTH_SERVER_URL)
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
         .post('/token')
-        .reply((uri, requestBody) => {
+  .reply((_uri, requestBody) => {
           const params = new URLSearchParams(requestBody);
           
           // Public clients cannot authenticate and should be rejected
@@ -259,6 +272,7 @@ describe('OAuth 2.1 Client Credentials Flow', () => {
           
           return [200, {}];
         });
+      }
 
       const tokenResponse = await fetch(`${AUTH_SERVER_URL}/token`, {
         method: 'POST',
@@ -277,19 +291,22 @@ describe('OAuth 2.1 Client Credentials Flow', () => {
   });
 
   describe('Token Usage and Validation', () => {
-    it('should successfully access protected resources with client credentials token', async () => {
+    it('should successfully access protected resources with client credentials token', async function () {
       // Test validates using client credentials token for API access
+      if (live()) this.skip(); // Resource server mocking only
       
       const clientToken = 'valid-client-token-123';
       
       // Mock resource server to accept the token
-      nock(RESOURCE_SERVER_URL)
+      if (!live()) {
+        nock(RESOURCE_SERVER_URL)
         .get('/protected')
         .matchHeader('authorization', `Bearer ${clientToken}`)
         .reply(200, {
           message: 'Access granted to protected resource',
           client_authenticated: true
         });
+      }
 
       const apiResponse = await fetch(`${RESOURCE_SERVER_URL}/protected`, {
         method: 'GET',
@@ -301,22 +318,24 @@ describe('OAuth 2.1 Client Credentials Flow', () => {
       expect(apiResponse.status).to.equal(200);
     });
 
-    it('should validate token scope for resource access', async () => {
+    it('should validate token scope for resource access', async function () {
       // Test validates scope-based authorization for client tokens
+      if (live()) this.skip();
       
-      const clientToken = 'valid-client-token-limited-scope';
-      const requiredScope = 'admin';
+  const clientToken = 'valid-client-token-limited-scope';
       
-      nock(RESOURCE_SERVER_URL)
+      if (!live()) {
+        nock(RESOURCE_SERVER_URL)
         .get('/admin')
         .matchHeader('authorization', `Bearer ${clientToken}`)
-        .reply((uri, requestBody, callback) => {
+        .reply((_uri, _requestBody, callback) => {
           // Simulate token introspection showing insufficient scope
           callback(null, [403, {
             error: 'insufficient_scope',
             error_description: 'Token lacks required admin scope'
           }]);
         });
+      }
 
       const apiResponse = await fetch(`${RESOURCE_SERVER_URL}/admin`, {
         method: 'GET',
@@ -328,18 +347,21 @@ describe('OAuth 2.1 Client Credentials Flow', () => {
       expect(apiResponse.status).to.equal(403);
     });
 
-    it('should handle token expiration gracefully', async () => {
+    it('should handle token expiration gracefully', async function () {
       // Test validates handling of expired client credentials tokens
+      if (live()) this.skip();
       
       const expiredToken = 'expired-client-token-456';
       
-      nock(RESOURCE_SERVER_URL)
+      if (!live()) {
+        nock(RESOURCE_SERVER_URL)
         .get('/protected')
         .matchHeader('authorization', `Bearer ${expiredToken}`)
         .reply(401, {
           error: 'invalid_token',
           error_description: 'Access token expired'
         });
+      }
 
       const apiResponse = await fetch(`${RESOURCE_SERVER_URL}/protected`, {
         method: 'GET',
@@ -360,10 +382,12 @@ describe('OAuth 2.1 Client Credentials Flow', () => {
       expect(tokenEndpoint).to.match(/^https:/);
     });
 
-    it('should not return refresh tokens in client credentials flow', async () => {
+    it('should not return refresh tokens in client credentials flow', async function () {
       // Test validates that refresh tokens are not issued for client credentials
+      if (live()) this.skip();
       
-      nock(AUTH_SERVER_URL)
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
         .post('/token')
         .reply(200, {
           access_token: 'client-token-no-refresh',
@@ -372,6 +396,7 @@ describe('OAuth 2.1 Client Credentials Flow', () => {
           scope: 'api:read'
           // No refresh_token should be present
         });
+      }
 
       const tokenResponse = await fetch(`${AUTH_SERVER_URL}/token`, {
         method: 'POST',
@@ -397,8 +422,9 @@ describe('OAuth 2.1 Client Credentials Flow', () => {
       expect(tokenData.refresh_token).to.be.undefined;
     });
 
-    it('should validate client secret strength', () => {
+    it('should validate client secret strength', function () {
       // Test validates that client secrets meet security requirements
+      if (live()) this.skip();
       
       const weakSecret = '123456';
       const strongSecret = CLIENT_SECRET;
@@ -411,16 +437,18 @@ describe('OAuth 2.1 Client Credentials Flow', () => {
       expect(strongSecret).to.match(/[A-Za-z0-9\-._~]+/);
     });
 
-    it('should implement client secret rotation', async () => {
+    it('should implement client secret rotation', async function () {
       // Test demonstrates client secret rotation capability
+      if (live()) this.skip();
       
       const oldSecret = 'old-client-secret-123';
       const newSecret = 'new-client-secret-456';
       
       // Old secret should eventually be rejected
-      nock(AUTH_SERVER_URL)
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
         .post('/token')
-        .reply((uri, requestBody) => {
+  .reply((_uri, requestBody) => {
           const params = new URLSearchParams(requestBody);
           
           if (params.get('client_secret') === oldSecret) {
@@ -438,6 +466,7 @@ describe('OAuth 2.1 Client Credentials Flow', () => {
           
           return [401, { error: 'invalid_client' }];
         });
+      }
 
       // Test with new secret should succeed
       const newSecretResponse = await fetch(`${AUTH_SERVER_URL}/token`, {
@@ -472,15 +501,18 @@ describe('OAuth 2.1 Client Credentials Flow', () => {
   });
 
   describe('Error Handling and Edge Cases', () => {
-    it('should handle malformed token requests', async () => {
+    it('should handle malformed token requests', async function () {
       // Test validates proper error handling for malformed requests
+      if (live()) this.skip();
       
-      nock(AUTH_SERVER_URL)
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
         .post('/token')
         .reply(400, {
           error: 'invalid_request',
           error_description: 'Malformed request'
         });
+      }
 
       const malformedResponse = await fetch(`${AUTH_SERVER_URL}/token`, {
         method: 'POST',
@@ -493,15 +525,18 @@ describe('OAuth 2.1 Client Credentials Flow', () => {
       expect(malformedResponse.status).to.equal(400);
     });
 
-    it('should handle server errors gracefully', async () => {
+    it('should handle server errors gracefully', async function () {
       // Test validates handling of server-side errors
+      if (live()) this.skip();
       
-      nock(AUTH_SERVER_URL)
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
         .post('/token')
         .reply(500, {
           error: 'server_error',
           error_description: 'Internal server error'
         });
+      }
 
       const errorResponse = await fetch(`${AUTH_SERVER_URL}/token`, {
         method: 'POST',
@@ -518,16 +553,18 @@ describe('OAuth 2.1 Client Credentials Flow', () => {
       expect(errorResponse.status).to.equal(500);
     });
 
-    it('should rate limit client credentials requests', async () => {
+    it('should rate limit client credentials requests', async function () {
       // Test validates rate limiting for client credentials endpoint
+      if (live()) this.skip();
       
       let requestCount = 0;
       const rateLimit = 10;
       
-      nock(AUTH_SERVER_URL)
+      if (!live()) {
+        nock(AUTH_SERVER_URL)
         .post('/token')
-        .times(rateLimit + 1)
-        .reply((uri, requestBody) => {
+    .times(rateLimit + 1)
+  .reply((_uri, _requestBody) => {
           requestCount++;
           
           if (requestCount > rateLimit) {
@@ -545,6 +582,7 @@ describe('OAuth 2.1 Client Credentials Flow', () => {
             expires_in: 3600
           }];
         });
+      }
 
       // Make requests up to rate limit
       for (let i = 0; i < rateLimit; i++) {
