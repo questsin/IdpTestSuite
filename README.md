@@ -26,7 +26,7 @@ This project was bootstrapped with assistance from **Perplexity Labs**, which he
 
 ## 🏗️ Architecture
 
-```
+```md
 test/
 ├── oauth2_1/                    # OAuth 2.1 specific tests
 │   ├── authorizationCodeFlow.js # Authorization Code + PKCE flow
