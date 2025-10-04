@@ -1,0 +1,113 @@
+{
+  "name": "oauth2.1-oidc-test-suite",
+  "version": "1.0.0",
+  "description": "Comprehensive OAuth 2.1 and OpenID Connect test suite using Mocha and Chai",
+  "main": "index.js",
+  "scripts": {
+    "test": "mocha --require ./test/setup.js test/**/*.js --timeout 10000 --recursive",
+    "test:oauth": "mocha --require ./test/setup.js test/oauth2_1/**/*.js --timeout 10000",
+    "test:oidc": "mocha --require ./test/setup.js test/oidc/**/*.js --timeout 10000",
+    "test:watch": "mocha --require ./test/setup.js test/**/*.js --timeout 10000 --recursive --watch",
+    "test:coverage": "nyc --reporter=text --reporter=html --reporter=json mocha --require ./test/setup.js test/**/*.js --timeout 10000 --recursive",
+    "test:security": "mocha --require ./test/setup.js test/oauth2_1/security.js --timeout 10000",
+    "test:introspection": "mocha --require ./test/setup.js test/oauth2_1/introspection.js --timeout 10000",
+    "lint": "eslint test/**/*.js",
+    "lint:fix": "eslint test/**/*.js --fix"
+  },
+  "keywords": [
+    "oauth",
+    "oauth2.1",
+    "openid-connect",
+    "oidc",
+    "pkce",
+    "jwt",
+    "security",
+    "testing",
+    "mocha",
+    "chai",
+    "authentication",
+    "authorization"
+  ],
+  "author": "OAuth 2.1 Test Suite Team",
+  "license": "MIT",
+  "dependencies": {
+    "chai": "^4.3.7",
+    "mocha": "^10.2.0",
+    "nock": "^13.3.1",
+    "jsonwebtoken": "^9.0.0",
+    "jwks-rsa": "^3.0.1",
+    "node-jose": "^2.2.0",
+    "supertest": "^6.3.3"
+  },
+  "devDependencies": {
+    "nyc": "^15.1.0",
+    "eslint": "^8.42.0",
+    "eslint-plugin-mocha": "^10.1.0",
+    "@types/mocha": "^10.0.1",
+    "@types/chai": "^4.3.5"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/example/oauth2.1-oidc-test-suite.git"
+  },
+  "bugs": {
+    "url": "https://github.com/example/oauth2.1-oidc-test-suite/issues"
+  },
+  "homepage": "https://github.com/example/oauth2.1-oidc-test-suite#readme",
+  "nyc": {
+    "exclude": [
+      "test/**",
+      "coverage/**",
+      "node_modules/**"
+    ],
+    "reporter": [
+      "text",
+      "html",
+      "json"
+    ],
+    "all": true,
+    "check-coverage": true,
+    "lines": 80,
+    "statements": 80,
+    "functions": 80,
+    "branches": 75
+  },
+  "mocha": {
+    "timeout": 10000,
+    "recursive": true,
+    "require": "./test/setup.js",
+    "spec": "test/**/*.js"
+  },
+  "eslintConfig": {
+    "env": {
+      "node": true,
+      "mocha": true,
+      "es2021": true
+    },
+    "extends": [
+      "eslint:recommended"
+    ],
+    "plugins": [
+      "mocha"
+    ],
+    "parserOptions": {
+      "ecmaVersion": 2021,
+      "sourceType": "module"
+    },
+    "rules": {
+      "no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
+      "no-console": "warn",
+      "mocha/no-exclusive-tests": "error",
+      "mocha/no-skipped-tests": "warn"
+    },
+    "globals": {
+      "expect": "readonly",
+      "should": "readonly",
+      "fetch": "readonly"
+    }
+  }
+}
