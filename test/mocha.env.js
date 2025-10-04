@@ -1,6 +1,3 @@
-require('mocha');
-
-global.before = before;
-global.after = after;
-global.describe = describe;
-global.it = it;
+// No-op environment loader. Mocha CLI already sets up BDD globals.
+// Left here in case future env-wide polyfills are needed.
+module.exports = {};

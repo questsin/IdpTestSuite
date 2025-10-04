@@ -3,6 +3,7 @@ const chai = require('chai');
 const nock = require('nock');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+// Mocha root hook plugin pattern used below; no need to import BDD globals here.
 
 // Global test configuration
 global.expect = chai.expect;
@@ -129,45 +130,34 @@ const createMockIdToken = (payload = {}) => {
   });
 };
 
-// Global test hooks
-before(function() {
-  // Disable real HTTP requests during tests
-  nock.disableNetConnect();
-  
-  // Allow local connections for any local test servers
-  nock.enableNetConnect('127.0.0.1');
-});
-
-after(function() {
-  // Clean up all nock interceptors
-  nock.cleanAll();
-  
-  // Re-enable real HTTP requests
-  nock.enableNetConnect();
-});
-
-beforeEach(function() {
-  // Reset nock before each test
-  if (!nock.isDone()) {
+// Root hook plugin to avoid referencing undefined `before` when this file is required early.
+exports.mochaHooks = {
+  beforeAll() {
+    nock.disableNetConnect();
+    nock.enableNetConnect('127.0.0.1');
+  },
+  afterAll() {
+    nock.cleanAll();
+    nock.enableNetConnect();
+  },
+  beforeEach() {
+    if (!nock.isDone()) {
+      nock.cleanAll();
+    }
+  },
+  afterEach() {
+    try {
+      nock.done();
+    } catch (err) {
+      const pending = nock.pendingMocks();
+      if (pending.length > 0) {
+        // eslint-disable-next-line no-console
+        console.warn('Pending HTTP mocks:', pending);
+      }
+    }
     nock.cleanAll();
   }
-});
-
-afterEach(function() {
-  // Ensure all expected HTTP calls were made
-  try {
-    nock.done();
-  } catch (err) {
-    // Log pending mocks for debugging
-    const pending = nock.pendingMocks();
-    if (pending.length > 0) {
-      console.warn('Pending HTTP mocks:', pending);
-    }
-  }
-  
-  // Clean up after each test
-  nock.cleanAll();
-});
+};
 
 // Export test configuration and utilities
 module.exports = {
