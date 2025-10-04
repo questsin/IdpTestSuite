@@ -156,6 +156,69 @@ const mockResourceServer = new MockResourceServer('https://api.example.com');
 mockResourceServer.setupCommonEndpoints();
 ```
 
+### Live IdP Testing (Auth0, GitHub, etc.)
+
+The suite can run against real identity providers by enabling live mode.
+
+1. Copy `.env.example` to `.env` and fill in values.
+2. Set `LIVE_IDP=1` and choose `PROVIDER` (e.g. `auth0` or `github`).
+3. For OIDC providers (Auth0, Okta, etc.) either set `OIDC_ISSUER` or all explicit endpoints.
+4. Run a filtered subset of tests (some mock-only negative tests will fail in live mode):
+
+```bash
+LIVE_IDP=1 PROVIDER=auth0 npm test -- --grep "Authorization Code"
+```
+
+#### Environment Variables
+
+| Variable | Purpose | Example |
+|----------|---------|---------|
+| LIVE_IDP | Enable live mode when `1` | `1` |
+| PROVIDER | Provider key (`mock`, `auth0`, `github`) | `auth0` |
+| OIDC_ISSUER | OIDC issuer base URL (discovery) | `https://tenant.us.auth0.com` |
+| OIDC_CLIENT_ID | Registered client id | `abc123` |
+| OIDC_CLIENT_SECRET | Client secret for confidential clients | `s3cr3t` |
+| OIDC_REDIRECT_URI | Redirect URI registered with IdP | `https://client.example.com/callback` |
+| OIDC_SCOPES | Requested scopes | `openid profile email` |
+| OIDC_AUDIENCE | (Auth0) API audience for custom resource | `https://api.example.com` |
+| OIDC_AUTHORIZATION_ENDPOINT | Override auth endpoint if no discovery | `https://github.com/login/oauth/authorize` |
+| OIDC_TOKEN_ENDPOINT | Token endpoint | `https://github.com/login/oauth/access_token` |
+| OIDC_USERINFO_ENDPOINT | OIDC user info endpoint | `https://tenant.us.auth0.com/userinfo` |
+| OIDC_JWKS_URI | JWKS URI | `https://tenant.us.auth0.com/.well-known/jwks.json` |
+
+Any unspecified endpoints are discovered from `OIDC_ISSUER` (when supported). GitHub is OAuth 2.0 only—no `id_token`, so OIDC-specific tests should be skipped (future enhancement: tagging tests by capability).
+
+#### Auth0 Notes
+
+- Set callback URL to match `OIDC_REDIRECT_URI` exactly.
+- Add `offline_access` to `OIDC_SCOPES` if you want refresh tokens.
+- Dynamic client registration is typically disabled; registration tests may need skipping.
+- For API (audience) tokens, create an API in the Auth0 dashboard and set `OIDC_AUDIENCE`.
+
+#### GitHub Notes
+
+- No OIDC id tokens; skip ID token validation and discovery tests.
+- Scopes like: `read:user user:email`.
+- Token endpoint returns form or JSON depending on `Accept: application/json` (current tests use JSON).
+- PKCE is supported—current tests should work if your app enables it.
+
+#### Test Strategy in Live Mode
+
+- Positive path authorization code + PKCE.
+- Refresh token tests only if provider issues one (skip otherwise).
+- Negative tests that rely on crafted HTTP error responses (e.g., missing PKCE) may fail because real IdPs redirect with HTML or different error payloads; these will need conditional logic or tagging.
+
+#### Tagging / Grep (Recommended Enhancement)
+
+Add annotations like `@live-safe` in test descriptions and run:
+
+```bash
+LIVE_IDP=1 npm test -- --grep "@live-safe"
+```
+
+This reduces noise from mock-specific negative tests.
+
+
 ## 📋 Test Categories
 
 ### OAuth 2.1 Tests
@@ -344,9 +407,7 @@ This test suite ensures compliance with:
 - Validate both success and error scenarios
 - Test edge cases and security boundaries
 
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+<!-- License section already present above; removed duplicate heading -->
 
 ## 🔗 Resources
 

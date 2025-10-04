@@ -3,6 +3,8 @@ const chai = require('chai');
 const nock = require('nock');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+const { live, provider } = require('./providerEnv');
+const { loadConfig } = require('./config/idpConfig');
 // Mocha root hook plugin pattern used below; no need to import BDD globals here.
 
 // Global test configuration
@@ -22,27 +24,13 @@ const TEST_CONFIG = {
   SCOPE: 'openid profile email',
   ISSUER: 'https://auth.example.com',
   AUDIENCE: 'test-api',
-  
-  // PKCE Configuration
-  PKCE: {
-    CODE_VERIFIER_LENGTH: 64,
-    CODE_CHALLENGE_METHOD: 'S256'
-  },
-  
-  // JWT Configuration
-  JWT: {
-    ALGORITHM: 'RS256',
-    EXPIRES_IN: '1h',
-    REFRESH_EXPIRES_IN: '24h'
-  },
-  
-  // Timeouts
-  TIMEOUTS: {
-    AUTH_REQUEST: 5000,
-    TOKEN_REQUEST: 5000,
-    INTROSPECTION: 3000
-  }
+  PKCE: { CODE_VERIFIER_LENGTH: 64, CODE_CHALLENGE_METHOD: 'S256' },
+  JWT: { ALGORITHM: 'RS256', EXPIRES_IN: '1h', REFRESH_EXPIRES_IN: '24h' },
+  TIMEOUTS: { AUTH_REQUEST: 5000, TOKEN_REQUEST: 5000, INTROSPECTION: 3000 }
 };
+
+// Resolved config (may be async). We'll load once before tests via mocha root hook.
+let RESOLVED_CONFIG = { ...TEST_CONFIG, PROVIDER: provider(), LIVE: live() };
 
 // Generate RSA key pair for testing JWT signatures
 const generateKeyPair = () => {
@@ -132,36 +120,73 @@ const createMockIdToken = (payload = {}) => {
 
 // Root hook plugin to avoid referencing undefined `before` when this file is required early.
 exports.mochaHooks = {
-  beforeAll() {
-    nock.disableNetConnect();
-    nock.enableNetConnect('127.0.0.1');
+  async beforeAll() {
+    if (live()) {
+      // Allow real network connections in live mode.
+      nock.cleanAll();
+      nock.enableNetConnect();
+      // Merge discovered / env config
+      try {
+        const cfg = await loadConfig();
+        RESOLVED_CONFIG = {
+          ...RESOLVED_CONFIG,
+          AUTH_SERVER_BASE_URL: cfg.issuer || cfg.authorizationEndpoint?.replace(/\/authorize$/, '') || RESOLVED_CONFIG.AUTH_SERVER_BASE_URL,
+          CLIENT_ID: cfg.clientId || RESOLVED_CONFIG.CLIENT_ID,
+            CLIENT_SECRET: cfg.clientSecret || RESOLVED_CONFIG.CLIENT_SECRET,
+          REDIRECT_URI: cfg.redirectUri || RESOLVED_CONFIG.REDIRECT_URI,
+          SCOPE: cfg.scopes || RESOLVED_CONFIG.SCOPE,
+          ISSUER: cfg.issuer || RESOLVED_CONFIG.ISSUER,
+          AUDIENCE: cfg.audience || RESOLVED_CONFIG.AUDIENCE,
+          OIDC: {
+            authorizationEndpoint: cfg.authorizationEndpoint,
+            tokenEndpoint: cfg.tokenEndpoint,
+            jwksUri: cfg.jwksUri,
+            userInfoEndpoint: cfg.userInfoEndpoint,
+            introspectionEndpoint: cfg.introspectionEndpoint,
+            endSessionEndpoint: cfg.endSessionEndpoint,
+            registrationEndpoint: cfg.registrationEndpoint
+          }
+        };
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn('Live config load failed:', e.message);
+      }
+    } else {
+      nock.disableNetConnect();
+      nock.enableNetConnect('127.0.0.1');
+    }
   },
   afterAll() {
     nock.cleanAll();
     nock.enableNetConnect();
   },
   beforeEach() {
-    if (!nock.isDone()) {
-      nock.cleanAll();
+    if (!live()) {
+      if (!nock.isDone()) {
+        nock.cleanAll();
+      }
     }
   },
   afterEach() {
-    try {
-      nock.done();
-    } catch (err) {
-      const pending = nock.pendingMocks();
-      if (pending.length > 0) {
-        // eslint-disable-next-line no-console
-        console.warn('Pending HTTP mocks:', pending);
+    if (!live()) {
+      try {
+        nock.done();
+      } catch (err) {
+        const pending = nock.pendingMocks();
+        if (pending.length > 0) {
+          // eslint-disable-next-line no-console
+          console.warn('Pending HTTP mocks:', pending);
+        }
       }
+      nock.cleanAll();
     }
-    nock.cleanAll();
   }
 };
 
 // Export test configuration and utilities
 module.exports = {
-  TEST_CONFIG,
+  TEST_CONFIG: RESOLVED_CONFIG,
+  RESOLVED_CONFIG,
   TEST_KEYS,
   TEST_JWKS,
   MOCK_USER,
