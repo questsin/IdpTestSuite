@@ -31,20 +31,20 @@
   "author": "OAuth 2.1 Test Suite Team",
   "license": "MIT",
   "dependencies": {
-    "chai": "^4.3.7",
-    "mocha": "^10.2.0",
-    "nock": "^13.3.1",
     "jsonwebtoken": "^9.0.0",
     "jwks-rsa": "^3.0.1",
     "node-jose": "^2.2.0",
     "supertest": "^6.3.3"
   },
   "devDependencies": {
-    "nyc": "^15.1.0",
+    "@types/chai": "^4.3.5",
+    "@types/mocha": "^10.0.1",
+    "chai": "^6.2.0",
     "eslint": "^8.42.0",
     "eslint-plugin-mocha": "^10.1.0",
-    "@types/mocha": "^10.0.1",
-    "@types/chai": "^4.3.5"
+    "mocha": "^11.7.4",
+    "nock": "^14.0.10",
+    "nyc": "^15.1.0"
   },
   "engines": {
     "node": ">=16.0.0",
@@ -99,7 +99,12 @@
       "sourceType": "module"
     },
     "rules": {
-      "no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
+      "no-unused-vars": [
+        "error",
+        {
+          "argsIgnorePattern": "^_"
+        }
+      ],
       "no-console": "warn",
       "mocha/no-exclusive-tests": "error",
       "mocha/no-skipped-tests": "warn"
