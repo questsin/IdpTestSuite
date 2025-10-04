@@ -105,11 +105,23 @@ const validateJwt = (token, publicKey, options = {}) => {
     ...options
   };
 
+  let payload;
   try {
-    return jwt.verify(token, publicKey, defaultOptions);
+    payload = jwt.verify(token, publicKey, defaultOptions);
   } catch (error) {
     throw new Error(`JWT validation failed: ${error.message}`);
   }
+
+  // Additional check: iat should not be too far in the future
+  if (typeof payload.iat === 'number') {
+    const now = Math.floor(Date.now() / 1000);
+    const clockTolerance = typeof defaultOptions.clockTolerance === 'number' ? defaultOptions.clockTolerance : 0;
+    if (payload.iat > now + clockTolerance) {
+      throw new Error('JWT validation failed: iat (issued at) is in the future');
+    }
+  }
+
+  return payload;
 };
 
 /**
